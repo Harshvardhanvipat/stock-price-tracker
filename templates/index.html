@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Tracker</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <h1>Stock Tracker</h1>
+            <p class="subtitle">Real-time market insights</p>
+        </header>
+
+        <main>
+            <div class="search-section">
+                <form id="add-stock-form">
+                    <input type="text" id="stock-symbol" placeholder="Enter stock symbol (e.g., NFLX)" required>
+                    <button type="submit">Add Stock</button>
+                </form>
+            </div>
+
+            <div class="dashboard">
+                <div class="section-header">
+                    <h2>Your Watchlist</h2>
+                    <span class="last-updated" id="last-updated">Updating...</span>
+                </div>
+                <div id="stock-list" class="stock-grid">
+                    <!-- Stock cards will be injected here -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>
