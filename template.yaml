@@ -1,0 +1,75 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Stock Price Tracker
+  Serverless Flask application with DynamoDB and scheduled updates.
+
+Globals:
+  Function:
+    Timeout: 10
+    MemorySize: 128
+    Environment:
+      Variables:
+        TABLE_NAME: !Ref StockTrackerTable
+
+Resources:
+  # --- DynamoDB Table ---
+  StockTrackerTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      PrimaryKey:
+        Name: symbol
+        Type: String
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+
+  # --- Lambda Function (API & Cron) ---
+  StockTrackerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: app.lambda_handler
+      Runtime: python3.9
+      Architectures:
+        - x86_64
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref StockTrackerTable
+      Events:
+        # HTTP API Event
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /{proxy+}
+            Method: any
+        # Scheduled Event (Every 5 minutes)
+        ScheduledUpdate:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+            Input: '{}'
+            # Note: We need to handle the event type in the code if we use the same function.
+            # Or better, split the handlers but keep the same code base.
+            # For simplicity, we'll use a separate resource definition pointing to the same code but different handler.
+
+  # Separate resource for the Scheduled Task to use a different handler
+  StockUpdaterFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: app.scheduled_update_handler
+      Runtime: python3.9
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref StockTrackerTable
+      Events:
+        ScheduledUpdate:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+
+Outputs:
+  StockTrackerApi:
+    Description: "API Gateway endpoint URL for Prod stage"
+    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/"

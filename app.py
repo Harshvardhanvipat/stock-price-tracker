@@ -1,42 +1,11 @@
-import threading
-import time
-import random
 from flask import Flask, jsonify, request, render_template
-from datetime import datetime
+from apig_wsgi import make_lambda_handler
+import db
+import os
 
 app = Flask(__name__)
 
-# In-memory storage
-# Structure: { 'AAPL': { 'price': 150.00, 'starred': False, 'history': [] } }
-stocks = {
-    'AAPL': {'price': 150.00, 'starred': False, 'change': 0.0},
-    'GOOGL': {'price': 2800.00, 'starred': False, 'change': 0.0},
-    'TSLA': {'price': 700.00, 'starred': True, 'change': 0.0},
-    'AMZN': {'price': 3400.00, 'starred': False, 'change': 0.0},
-    'MSFT': {'price': 299.00, 'starred': False, 'change': 0.0}
-}
-
-def update_prices():
-    """Background task to update stock prices every 5 minutes (simulated)."""
-    while True:
-        print(f"[{datetime.now()}] Updating stock prices...")
-        for symbol in stocks:
-            # Simulate price change between -2% and +2%
-            current_price = stocks[symbol]['price']
-            change_percent = random.uniform(-0.02, 0.02)
-            new_price = current_price * (1 + change_percent)
-            
-            stocks[symbol]['price'] = round(new_price, 2)
-            stocks[symbol]['change'] = round(change_percent * 100, 2)
-        
-        print(f"[{datetime.now()}] Prices updated.")
-        # Sleep for 5 minutes (300 seconds)
-        # For demo purposes, let's make it 30 seconds so the user can see it working
-        time.sleep(30) 
-
-# Start background thread
-tracker_thread = threading.Thread(target=update_prices, daemon=True)
-tracker_thread.start()
+# --- Routes ---
 
 @app.route('/')
 def index():
@@ -44,16 +13,8 @@ def index():
 
 @app.route('/api/stocks', methods=['GET'])
 def get_stocks():
-    # Convert dict to list for easier frontend consumption
-    stock_list = []
-    for symbol, data in stocks.items():
-        stock_list.append({
-            'symbol': symbol,
-            'price': data['price'],
-            'starred': data['starred'],
-            'change': data['change']
-        })
-    return jsonify(stock_list)
+    stocks = db.get_all_stocks()
+    return jsonify(stocks)
 
 @app.route('/api/stocks', methods=['POST'])
 def add_stock():
@@ -63,26 +24,35 @@ def add_stock():
     if not symbol:
         return jsonify({'error': 'Symbol is required'}), 400
     
-    if symbol in stocks:
-        return jsonify({'error': 'Stock already exists'}), 400
+    stock, error = db.add_stock(symbol)
+    if error:
+        return jsonify({'error': error}), 400
     
-    # Initialize with a random price
-    stocks[symbol] = {
-        'price': round(random.uniform(10, 1000), 2),
-        'starred': False,
-        'change': 0.0
-    }
-    
-    return jsonify({'message': f'Stock {symbol} added', 'stock': stocks[symbol]})
+    return jsonify({'message': f'Stock {symbol} added', 'stock': stock})
 
 @app.route('/api/stocks/<symbol>/star', methods=['POST'])
 def toggle_star(symbol):
-    symbol = symbol.upper()
-    if symbol not in stocks:
-        return jsonify({'error': 'Stock not found'}), 404
+    new_status, error = db.toggle_star(symbol)
+    if error:
+        status_code = 404 if "not found" in error else 500
+        return jsonify({'error': error}), status_code
     
-    stocks[symbol]['starred'] = not stocks[symbol]['starred']
-    return jsonify({'starred': stocks[symbol]['starred']})
+    return jsonify({'starred': new_status})
+
+# --- Lambda Handlers ---
+
+# 1. API Handler (HTTP requests)
+lambda_handler = make_lambda_handler(app)
+
+# 2. Scheduled Handler (EventBridge/Cron)
+def scheduled_update_handler(event, context):
+    print("Starting scheduled price update...")
+    count = db.update_prices()
+    print(f"Updated {count} stocks.")
+    return {'statusCode': 200, 'body': f'Updated {count} stocks'}
 
 if __name__ == '__main__':
+    # Local development only
+    # Note: This will fail without AWS credentials configured locally if it tries to hit DynamoDB
+    # You might want to mock db.py for pure local testing without AWS
     app.run(debug=True, port=5000)
